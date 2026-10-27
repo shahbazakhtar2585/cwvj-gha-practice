@@ -1,81 +1,85 @@
+
 name: 01 - CWVJ Flask Build Test Publish Pipeline
 
 on:
-    push:
-        branches:
-            - main
-            - feature/*
+  push:
+    branches:
+      - main
+      - feature/*
+    paths:
+      - 'app/**'
+      - '.github/workflows/**'
 
-        paths:
-            - app/**
-            - .github/workflows/**
-
-    pull_request:
-        branches:
-            - main
-
-        types:
-            - opened
-            - synchronize
-            - ready_for_review
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - ready_for_review
 
 env:
-    APPLICATION: cwvj-flask-app
-  
-    
+  APPLICATION: cwvj-flask-app
+  DOCKER_USERNAME: cloudwithvarjosh
+
 jobs:
-    flask-build-test-publish-job:
-        runs-on: ubuntu-latest
-        
-        if: ${{ (github.event_name == 'push' && startsWith(github.ref_name, 'feature/'))}} || (github.event_name =='pull')
+  flask-build-test-publish-job:
+    runs-on: ubuntu-latest
 
-        steps:
-            - name: Checkout Repository
-              uses: actions/checkout@v6
+    if: ${{ (github.event_name == 'push' && startsWith(github.ref_name, 'feature/')) || github.event_name == 'pull_request' }}
 
-            - name: Generate Dynamic Image Tag
-              run: |
-               echo "IMAGE_TAG=v${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}" >> $GITHUB_ENV
-               
-            - name: Display Build Information
-              run: |
-               echo "Application: $APPLICATION_NAME"
-               echo "Repository: $GITHUB_REPOSITORY"
-               echo "Actor: $GITHUB_ACTOR"
-               echo "Branch: $GITHUB_REF_NAME"
-               echo "Image Tag: $IMAGE_TAG"
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
 
-            - name: Build Docker Image
-              uses: docker/build-push-action@v7
-              with:
-                context: ./app
-                push: false
-                tags: ${{ env.DOCKER_USERNAME }}/${{ env.APPLICATION_NAME }}:${{ env.IMAGE_TAG }}
+      - name: Generate Dynamic Image Tag
+        run: |
+          echo "IMAGE_TAG=v${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
 
-            - name: RUN Container
-              run: |
-                docker run -d -p 5000:5000 --name flask-container $DOCKER_USERNAME/$APPLICATION_NAME:$IMAGE_TAG
+      - name: Display Build Information
+        run: |
+          echo "Application: $APPLICATION"
+          echo "Repository: $GITHUB_REPOSITORY"
+          echo "Actor: $GITHUB_ACTOR"
+          echo "Branch: $GITHUB_REF_NAME"
+          echo "Image Tag: $IMAGE_TAG"
 
-            - name: Smoke Test Application
-              run: |
-                sleep 10
-                curl --fail http://localhost:5000
-                curl --fail http://localhost:5000/health
+      - name: Build Docker Image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./app
+          push: false
+          load: true
+          tags: ${{ env.DOCKER_USERNAME }}/${{ env.APPLICATION }}:${{ env.IMAGE_TAG }}
 
-            - name: Push Docker Image To DockerHub
-              if: ${{ success()}}
-              run: |
-                docker push $DOCKER_USERNAME/$APPLICATION_NAME:$IMAGE_TAG
+      - name: Run Container
+        run: |
+          docker run -d -p 5000:5000 --name flask-container "$DOCKER_USERNAME/$APPLICATION:$IMAGE_TAG"
 
-            - name: Collect Container Logs
-              if: ${{ failure() }}
-              run: |
-                docker logs flask-container
+      - name: Smoke Test Application
+        run: |
+          sleep 10
+          curl --fail http://localhost:5000
+          curl --fail http://localhost:5000/health
 
-            - name: Cleanup Containers  
-              run: |
-               docker rm -f flask-container || true  
+      - name: Login to DockerHub
+        if: ${{ success() && github.event_name == 'push' && github.ref_name == 'main' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Push Docker Image To DockerHub
+        if: ${{ success() && github.event_name == 'push' && github.ref_name == 'main' }}
+        run: |
+          docker push "$DOCKER_USERNAME/$APPLICATION:$IMAGE_TAG"
 
-            
-  
+      - name: Collect Container Logs
+        if: ${{ failure() }}
+        run: |
+          docker logs flask-container || true
+
+      - name: Cleanup Containers
+        if: ${{ always() }}
+        run: |
+          docker rm -f flask-container || true
