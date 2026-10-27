@@ -21,7 +21,7 @@ on:
 
 env:
   APPLICATION: cwvj-flask-app
-  DOCKER_USERNAME: cloudwithvarjosh
+  DOCKER_USERNAME: awybio
 
 jobs:
   flask-build-test-publish-job:
