@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - feature/*
+      - demo
     paths:
       - 'app/**'
       - '.github/workflows/**'
